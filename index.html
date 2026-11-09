@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>答辩同声助手</title>
+<style>
+/* One column for an iPhone lying on the desk: status + caption on top, the answer card fills the screen. */
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --ink:#15202A; --muted:#5A6772; --line:#D6DEDC;
+  --accent:#2C4784; --on-accent:#FFFFFF; --celadon:#3F8676; --celadon-soft:#E1EEEA; --warn:#A3462C; --warn-soft:#F7E6E0;
+  --f-ko:"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
+  --f-body:-apple-system,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0E1418; --surface:#162027; --ink:#E6ECEA; --muted:#93A1A9; --line:#26333B;
+  --accent:#93ACEB; --on-accent:#0E1418; --celadon:#7CC4B1; --celadon-soft:#183029; --warn:#E89478; --warn-soft:#33201A; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5;padding-inline:max(14px,env(safe-area-inset-left));padding-block:env(safe-area-inset-top) calc(30px + env(safe-area-inset-bottom))}
+.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:10px}
+h1{font-size:1.1rem;margin:0}
+.pill{font-size:.8rem;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.pill.on{color:var(--celadon);border-color:var(--celadon)} .pill.on i{background:var(--celadon);animation:pulse 1.4s infinite}
+.pill.busy{color:var(--accent);border-color:var(--accent)} .pill.busy i{background:var(--accent)}
+.pill.bad{color:var(--warn);border-color:var(--warn)} .pill.bad i{background:var(--warn)}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){.pill.on i{animation:none}}
+#toggle{font:inherit;font-size:1.1rem;font-weight:700;padding:16px;border-radius:12px;border:0;background:var(--accent);color:var(--on-accent);cursor:pointer}
+#toggle.stop{background:var(--surface);color:var(--warn);border:1px solid var(--warn)}
+#caption{font-family:var(--f-ko);font-size:.95rem;color:var(--muted);min-height:1.5em;padding:8px 12px;border-radius:10px;background:var(--surface);border:1px dashed var(--line);overflow-wrap:anywhere}
+#meter{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+#meter b{display:block;height:100%;width:0;background:var(--celadon);transition:width .08s linear}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.qmean{font-size:.92rem;color:var(--celadon);background:var(--celadon-soft);border-radius:8px;padding:7px 10px}
+.heard{font-family:var(--f-ko);font-size:.85rem;color:var(--muted)}
+.pair{display:flex;flex-direction:column;gap:2px}
+.ko{font-family:var(--f-ko);font-size:1.42rem;line-height:1.55;font-weight:700;word-break:keep-all;overflow-wrap:anywhere}
+.pr{font-size:.85rem;color:var(--accent)}
+.zh{font-size:.92rem;color:var(--muted)}
+.ph{color:var(--muted);font-size:.92rem}
+.note{font-size:.85rem;padding:8px 12px;border-radius:8px;background:var(--warn-soft);color:var(--warn);margin:0}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+summary{cursor:pointer;font-weight:600;padding:2px 0}
+details[open] summary{margin-bottom:10px}
+.form{display:flex;flex-direction:column;gap:10px}
+.form label{font-size:.8rem;color:var(--muted)}
+textarea,input[type=text],input[type=password],input[type=search],select{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+textarea{resize:vertical;line-height:1.45}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:.92rem;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.opt{display:inline-flex;gap:6px;align-items:center;font-size:.88rem}
+.hint{font-size:.8rem;color:var(--muted);margin:0}
+.ok{color:var(--celadon)} .err{color:var(--warn)}
+#hist .card{opacity:.85}
+#hist .ko{font-size:1.05rem;font-weight:600}
+.qa{padding:10px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.qa:last-child{border-bottom:0}
+.qa .t{font-weight:700}
+.qa .ko{font-size:1.02rem;font-weight:500}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>答辩同声助手</h1>
+    <span class="pill" id="state"><i></i><span>未开始</span></span>
+  </header>
+
+  <details id="setup">
+    <summary>设置（第一次用先填这里）</summary>
+    <div class="form">
+      <label for="qa">我的问答稿：每题一行 Q: 中文问题，一行 KO: 韩语回答；可选 ZH: 中文意思、QK: 韩语问法（用 / 隔开）、K: 关键词（用逗号隔开）</label>
+      <textarea id="qa" rows="9" placeholder="Q: 为什么选这个题目？&#10;QK: 왜 이 주제를 선택했습니까 / 연구 동기는 무엇입니까&#10;KO: 네, 좋은 질문 감사합니다. 이 주제를 선택한 이유는 …입니다.&#10;ZH: 谢谢。选这个题目是因为……&#10;&#10;Q: 数据从哪里来？&#10;KO: …"></textarea>
+      <div class="row"><button class="btn pri" id="qaSave">保存问答稿</button><span class="hint" id="qaMsg"></span></div>
+
+      <label for="brief">我的论文资料：摘要、研究问题、数据、方法、主要结果、讲稿都可以（联网回答和自动出题时用）</label>
+      <textarea id="brief" rows="6" placeholder="把论文摘要和开题报告要点粘贴到这里"></textarea>
+      <div class="row"><button class="btn" id="briefSave">保存资料</button><span class="hint" id="briefMsg"></span></div>
+      <p class="hint">问答稿和资料只保存在这台手机的浏览器里。只有联网生成时，内容才会发给 Gemini。</p>
+
+      <label for="key">Gemini API Key（只保存在这台手机里）</label>
+      <div class="row"><input type="password" id="key" autocomplete="off" style="flex:1"><button class="btn pri" id="keyBtn">保存</button></div>
+      <p class="hint">在 aistudio.google.com/apikey 用谷歌账号免费创建，复制过来粘贴。</p>
+
+      <label for="model">模型</label>
+      <select id="model"><option value="">先保存 Key，会自动列出可用模型</option></select>
+      <p class="hint" id="modelMsg"></p>
+
+      <label>让 Gemini 帮忙准备（先保存 Key）</label>
+      <div class="row"><button class="btn" id="mkVariants">给每题补上韩语问法</button><button class="btn" id="mkPrep">根据资料预测 15 题</button></div>
+      <p class="hint" id="prepMsg">每题有了韩语问法（QK），现场才能准确对上教授的问题。没写的点第一个按钮自动补。</p>
+
+      <label>识别方式</label>
+      <div class="row">
+        <label class="opt"><input type="radio" name="mode" value="speech" checked> 手机听写（快，推荐）</label>
+        <label class="opt"><input type="radio" name="mode" value="audio"> 录音交给 Gemini 听（术语更准，稍慢）</label>
+      </div>
+      <label>回答</label>
+      <div class="row">
+        <label class="opt"><input type="radio" name="len" value="3" checked> 3 句</label>
+        <label class="opt"><input type="radio" name="len" value="5"> 5 句</label>
+        <label class="opt"><input type="checkbox" id="pr"> 附罗马字发音</label>
+      </div>
+      <label class="opt"><input type="checkbox" id="useGemini" checked> 问答稿里没把握找到时，再用 Gemini 现场生成（较慢，要联网）</label>
+      <div class="row"><button class="btn" id="testBtn">用一个问题测试</button><span class="hint" id="testMsg"></span></div>
+    </div>
+  </details>
+
+  <button id="toggle">开始听</button>
+  <div id="meter" hidden><b></b></div>
+  <div id="caption" lang="ko">按「开始听」后，教授说的话会实时显示在这里。</div>
+
+  <div class="card" id="answer" aria-live="polite">
+    <div class="ph">识别到教授的问题后，韩语回答会自动出现在这里，每句下面有中文意思。你念回答时它会自动忽略你自己的声音。</div>
+  </div>
+
+  <div id="hist"></div>
+
+  <details>
+    <summary>我的问答稿（可搜索）</summary>
+    <input type="search" id="qf" placeholder="输入中文或韩文关键词">
+    <div id="qaList"></div>
+  </details>
+
+  <details>
+    <summary>救场句</summary>
+    <div id="phr"></div>
+  </details>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
+const S = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch {} }
+};
+const opt = name => document.querySelector(`input[name="${name}"]:checked`).value;
+
+function setState(text, cls){ const p = $("#state"); p.className = "pill " + (cls || ""); p.lastElementChild.textContent = text; }
+
+/* ---------------- my Q&A and materials (kept only in this browser) ---------------- */
+let DATA = { prep: [], brief: "" };
+const blank = () => ({ q_zh: "", qk: [], k: [], ko: "", zh: "" });
+function parseQA(text){
+  const items = []; let cur = null;
+  const push = () => { if (cur && cur.ko.trim()) items.push(cur); cur = null; };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim(); if (!line) continue;
+    let m;
+    // markdown files of the form "### 3. question" / **한국어 답변**： / **中文理解**： also work
+    if ((m = line.match(/^#{2,4}\s*(?:\d+[.、]\s*)?(.+)$/))) { push(); cur = blank(); cur.q_zh = m[1].trim(); continue; }
+    m = line.match(/^(QK|Q|问|問|K|KO|ZH|A)\s*[:：]\s*(.*)$/i) || line.match(/^\*\*(한국어 답변|中文理解)\*\*\s*[:：]\s*(.*)$/);
+    if (m) {
+      const tag = m[1].toUpperCase(), v = m[2].trim();
+      if (tag === "Q" || tag === "问" || tag === "問") { push(); cur = blank(); cur.q_zh = v; continue; }
+      if (!cur) cur = blank();
+      if (tag === "QK") cur.qk.push(...v.split(/\s*[\/／|]\s*/).filter(Boolean));
+      else if (tag === "K") cur.k.push(...v.split(/\s*[,，、]\s*/).filter(Boolean));
+      else if (tag === "KO" || tag === "A" || tag === "한국어 답변") cur.ko += (cur.ko ? " " : "") + v;
+      else cur.zh += (cur.zh ? " " : "") + v;
+      continue;
+    }
+    if (cur) { if (/[가-힣]/.test(line)) cur.ko += " " + line; else cur.zh += (cur.zh ? " " : "") + line; }
+  }
+  push();
+  return items.map((c, i) => ({ q_zh: (i + 1) + ". " + (c.q_zh || c.ko.slice(0, 20)), q: c.qk, k: c.k, a: [{ ko: c.ko.trim(), zh: c.zh.trim() }] }));
+}
+const plainQ = it => it.q_zh.replace(/^\d+\.\s*/, "");
+function serializeQA(prep){
+  return prep.map(it => ["Q: " + plainQ(it), it.q && it.q.length ? "QK: " + it.q.join(" / ") : "", it.k && it.k.length ? "K: " + it.k.join(", ") : "",
+    "KO: " + it.a[0].ko, it.a[0].zh ? "ZH: " + it.a[0].zh : ""].filter(Boolean).join("\n")).join("\n\n");
+}
+function loadData(){
+  let prep = []; try { prep = JSON.parse(S.get("op_prep", "[]")) || []; } catch {}
+  DATA = { prep, brief: S.get("op_brief", "") };
+  QINDEX = prep.length ? buildIndex(prep) : null;
+  $("#qa").value = prep.length ? serializeQA(prep) : S.get("op_qa_draft", "");
+  $("#brief").value = DATA.brief;
+  const withQ = prep.filter(x => x.q && x.q.length).length;
+  $("#qaMsg").textContent = prep.length ? "已保存 " + prep.length + " 题，" + withQ + " 题有韩语问法。" : "";
+  $("#qaMsg").className = "hint ok";
+  renderQA();
+}
+function savePrep(prep){ prep = prep.map((it, i) => ({ ...it, q_zh: (i + 1) + ". " + plainQ(it) })); S.set("op_prep", JSON.stringify(prep)); loadData(); }
+$("#qa").addEventListener("input", () => S.set("op_qa_draft", $("#qa").value));
+$("#qaSave").onclick = () => {
+  const p = parseQA($("#qa").value);
+  if (!p.length) { $("#qaMsg").textContent = "没读出题目：每题要有一行 Q: 问题 和一行 KO: 韩语回答。"; $("#qaMsg").className = "hint err"; return; }
+  savePrep(p);
+};
+$("#briefSave").onclick = () => {
+  S.set("op_brief", $("#brief").value.trim()); loadData();
+  $("#briefMsg").textContent = "已保存 " + DATA.brief.length + " 字。"; $("#briefMsg").className = "hint ok";
+};
+
+function parseJSONLoose(t){
+  const a = t.indexOf("["), b = t.lastIndexOf("]");
+  if (a < 0 || b < a) throw { user: "Gemini 返回的格式不对，再点一次。" };
+  return JSON.parse(t.slice(a, b + 1));
+}
+async function helper(btn, run){
+  const msg = $("#prepMsg");
+  if (!S.get("op_key", "")) { msg.textContent = "先在上面保存 Gemini Key。"; msg.className = "hint err"; return; }
+  btn.disabled = true; msg.textContent = "Gemini 正在生成，大约半分钟到一分钟…"; msg.className = "hint";
+  try { msg.textContent = await run(); msg.className = "hint ok"; }
+  catch (e) { msg.textContent = (e && e.user) || "生成失败，再点一次。"; msg.className = "hint err"; }
+  finally { btn.disabled = false; }
+}
+$("#mkVariants").onclick = () => helper($("#mkVariants"), async () => {
+  const prep = DATA.prep;
+  if (!prep.length) throw { user: "先保存问答稿。" };
+  const list = prep.map((it, i) => i + ". " + plainQ(it) + " | " + it.a[0].ko.slice(0, 160)).join("\n");
+  const t = await gemini("你熟悉韩国大学的学术口语。", [{ text:
+`下面是一位在韩国读博的学生的开题答辩问答稿，每行是：序号. 中文问题 | 韩语回答的开头。
+为每一题写出韩国教授在答辩现场口头提问时可能用的 4 种韩语问法（自然口语，长短不一），以及 6-10 个韩语关键词（包括术语的韩语说法；英文缩写同时给出韩语读音，例如 GDP 和 지디피、DID 和 디아이디）。
+只输出 JSON 数组，不要任何其他文字，形如：[{"i":0,"q":["问法1","问法2"],"k":["关键词1","关键词2"]}]
+
+${list}` }], undefined, () => {}, 8192);
+  let n = 0;
+  for (const x of parseJSONLoose(t)) {
+    const it = prep[Number(x.i)]; if (!it) continue; n++;
+    it.q = [...new Set([...(it.q || []), ...(x.q || []).map(String)])];
+    it.k = [...new Set([...(it.k || []), ...(x.k || []).map(String)])];
+  }
+  savePrep(prep);
+  return "已为 " + n + " 题补上韩语问法和关键词，可以在上面的问答稿里看到和修改。";
+});
+$("#mkPrep").onclick = () => helper($("#mkPrep"), async () => {
+  if (DATA.brief.length < 100) throw { user: "先在上面粘贴并保存论文资料（摘要、研究问题、数据、方法、结果）。" };
+  const have = DATA.prep.map(plainQ).join("\n");
+  const t = await gemini("你在帮一位在韩国读博的中国留学生准备开题答辩。", [{ text:
+`根据下面的论文资料，预测韩国教授在开题答辩上最可能问的 15 个问题，覆盖研究动机、创新点、与已有研究的区别、理论框架与假设、数据来源、变量测量、研究方法与内生性、可行性与时间安排、预期贡献、局限。不要和“已有问题”重复。
+每题给出学生可以背下来的韩语回答：합니다체，3-4 句短句，简单好念，只依据资料，资料里没有的数字和文献不要编。
+只输出 JSON 数组，不要任何其他文字，形如：[{"q_zh":"中文问题","q":["韩语问法1","韩语问法2","韩语问法3"],"k":["韩语关键词"],"ko":"韩语回答","zh":"回答的中文意思"}]
+
+<已有问题>
+${have || "（无）"}
+</已有问题>
+
+<论文资料>
+${DATA.brief}
+</论文资料>` }], undefined, () => {}, 8192);
+  const add = parseJSONLoose(t).filter(x => x && x.ko).map(x => ({ q_zh: String(x.q_zh || ""), q: (x.q || []).map(String), k: (x.k || []).map(String), a: [{ ko: String(x.ko), zh: String(x.zh || "") }] }));
+  savePrep([...DATA.prep, ...add]);
+  return "已加入 " + add.length + " 题。生成的回答请自己读一遍、改准确，再背熟。";
+});
+
+/* ---------------- Gemini ---------------- */
+const API = "https://generativelanguage.googleapis.com/v1beta/";
+$("#key").value = S.get("op_key", "");
+function modelScore(name){
+  const v = parseFloat((name.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0;
+  // speed first: the lite models answer fastest; preview models are the ones most often "overloaded" (503)
+  return v * 10 + (/lite/.test(name) ? 5 : 0) - (/preview|exp/.test(name) ? 12 : 0);
+}
+async function loadModels(){
+  const key = S.get("op_key", ""); if (!key) return;
+  const msg = $("#modelMsg"); msg.textContent = "正在读取可用模型…"; msg.className = "hint";
+  try {
+    const r = await fetch(API + "models?pageSize=200&key=" + encodeURIComponent(key));
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    const names = (j.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map(m => m.name.replace(/^models\//, ""))
+      .filter(n => /^gemini-.*flash/.test(n) && !/(image|tts|live|audio|embed|thinking|computer|robotics|native)/.test(n))
+      .sort((a, b) => modelScore(b) - modelScore(a));
+    if (!names.length) throw new Error("none");
+    const sel = $("#model"); sel.replaceChildren(...names.map(n => { const o = el("option", null, n); o.value = n; return o; }));
+    // earlier versions preferred slower models; move everyone onto the fast default once
+    const saved = S.get("op_model_v2", "") ? S.get("op_model", "") : "";
+    sel.value = names.includes(saved) ? saved : names[0];
+    S.set("op_model", sel.value); S.set("op_model_v2", "1");
+    msg.textContent = "Key 可用。默认选了速度最快的稳定版 Flash-Lite 模型；繁忙时会自动换别的。"; msg.className = "hint ok";
+  } catch (e) {
+    msg.textContent = "Key 不可用或网络不通。检查 Key 是否复制完整。"; msg.className = "hint err";
+  }
+}
+$("#keyBtn").onclick = () => { S.set("op_key", $("#key").value.trim()); loadModels(); };
+$("#model").onchange = () => S.set("op_model", $("#model").value);
+
+let noThink = new Set(JSON.parse(S.get("op_nothink_models", "[]") || "[]"));
+function thinkingConfig(model){
+  if (noThink.has(model)) return null;
+  if (/gemini-2\.5/.test(model)) return { thinkingBudget: 0 };
+  if (/gemini-[3-9]/.test(model)) return { thinkingLevel: "minimal" };
+  return null;
+}
+// Busy (503/500), over quota (429) or unreachable: try the next models in the list, and stay on the one that answers.
+async function gemini(system, parts, signal, onText, maxTokens){
+  const sel = $("#model"), first = sel.value || S.get("op_model", "");
+  const others = Array.from(sel.options).map(o => o.value).filter(v => v && v !== first);
+  const tryList = [first, ...others].filter(Boolean).slice(0, 4);
+  let lastErr = null;
+  for (const model of tryList) {
+    try {
+      const text = await geminiOnce(model, system, parts, signal, onText, maxTokens);
+      if (model !== first) {
+        sel.value = model; S.set("op_model", model);
+        $("#modelMsg").textContent = first + " 当时繁忙，已自动换成 " + model + "。"; $("#modelMsg").className = "hint ok";
+      }
+      return text;
+    } catch (e) {
+      if (e && e.name === "AbortError") throw e;
+      lastErr = e;
+      if (!(e && e.retry)) throw e;
+    }
+  }
+  throw lastErr || { user: "Gemini 暂时不可用，下一句会自动再试。" };
+}
+async function geminiOnce(model, system, parts, signal, onText, maxTokens){
+  const key = S.get("op_key", "");
+  if (!key || !model) throw { user: "先在「设置」里保存 Gemini Key。" };
+  const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts }], generationConfig: { temperature: 0.3, maxOutputTokens: maxTokens || 900 } };
+  const tc = thinkingConfig(model); if (tc) body.generationConfig.thinkingConfig = tc;
+  const url = `${API}models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
+  const post = () => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+  let r;
+  try { r = await post(); } catch (e) { if (e && e.name === "AbortError") throw e; throw { retry: true, user: "网络不通，请检查手机网络。" }; }
+  if (r.status === 400 && tc) {
+    // this model does not take the thinking setting; drop it and remember for this model
+    noThink.add(model); S.set("op_nothink_models", JSON.stringify([...noThink])); delete body.generationConfig.thinkingConfig;
+    r = await post();
+  }
+  if (!r.ok) {
+    if (r.status === 429) throw { retry: true, user: "Gemini 免费额度每分钟有次数限制，所有可用模型都暂时用满了，十几秒后恢复。" };
+    if (r.status >= 500) throw { retry: true, user: "Gemini 服务器繁忙（" + r.status + "），换了几个模型也没成功。下一句会自动再试。" };
+    if (r.status === 400 || r.status === 403 || r.status === 404) throw { retry: r.status === 404, user: "Gemini 拒绝了请求（" + r.status + "）。检查 Key，或在设置里换一个模型。" };
+    throw { retry: true, user: "Gemini 暂时出错（" + r.status + "），下一句会自动再试。" };
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "", text = "";
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith("data:")) continue;
+      try {
+        const j = JSON.parse(line.slice(5));
+        for (const p of (j.candidates?.[0]?.content?.parts || [])) if (p.text && !p.thought) text += p.text;
+        onText(text);
+      } catch {}
+    }
+  }
+  return text;
+}
+
+/* ---------------- prompts ---------------- */
+function systemText(){
+  const d = DATA;
+  const qa = d.prep.map(it => it.q_zh + "\n" + it.a[0].ko + (it.a[0].zh ? "\n" + it.a[0].zh : "")).join("\n\n");
+  return `你是一名在韩国读博的中国留学生开题答辩时的实时助手。教授用韩语说话，学生必须用韩语回答，但韩语水平有限。你会收到教室里刚听到的一段话，要立刻给出学生可以照着念的韩语回答。
+
+判断：
+- 只有在明显是学生自己在念屏幕上的回答，或者只是噪音和无意义的碎片时，才只输出一行：SKIP。拿不准时一律当作教授的话来回答。
+- 教授的提问、追问、质疑、评论或建议，都需要回答。教授如果只是给建议，回答就是简短致谢并说明会如何反映到研究中。
+- 语音识别可能有错字、同音词错误、漏词，要结合论文资料推断教授的原意。
+
+输出格式：每行以前缀开头，不要 markdown，不要任何其他文字。
+T: 这段话的韩语原文（只有收到音频时才写这一行）
+Q: 一句中文说明教授在问什么或说什么；识别有疑问时在后面加“（也可能是：…）”
+KO: 韩语回答的一句
+PR: 这一句的罗马字发音（只有要求时才写）
+ZH: 这一句的中文意思
+按 KO/PR/ZH 的顺序重复。
+
+回答规则：
+- 합니다체学术敬语。第一句可以是很短的回应，如“네, 좋은 질문 감사합니다.”，但不要每次都用同一句。
+- 先给结论，再给一两个依据。每句短、常用词、好念。
+- 问答稿里已有对应问答时，优先沿用其中的韩语说法和数字，并保留问答稿对证据边界的全部限定，不能把结论说得比问答稿更强。
+- 只依据下面的资料。资料里没有的数字、文献、结论绝对不要编，改用“그 부분은 현재 자료로 확인한 뒤 정확히 말씀드리겠습니다.”或“앞으로 연구에서 보완하겠습니다.”这类说法。
+
+<学生准备的问答稿>
+${qa || "（无）"}
+</学生准备的问答稿>
+
+<论文资料>
+${d.brief || "（学生没有提供）"}
+</论文资料>`;
+}
+let profBuf = [];   // recent professor utterances {at, text}
+let shown = null;   // answer currently on screen {q, items, heard}
+function shownKO(){ return shown ? shown.items.map(i => i.ko).join(" ") : ""; }
+function userText(latest, isAudio){
+  const n = opt("len"), pr = $("#pr").checked;
+  const recent = profBuf.filter(u => Date.now() - u.at < 60000 && u.text !== latest && !u.text.startsWith("录音 ")).slice(-3).map(u => u.text);
+  let s = "";
+  if (recent.length) s += "<教授前面刚说过的话>\n" + recent.join("\n") + "\n</教授前面刚说过的话>\n";
+  if (shown) s += "<学生屏幕上当前的回答，学生可能正在念它>\n" + shownKO() + "\n</学生屏幕上当前的回答>\n";
+  s += `本次回答 ${n} 句；${pr ? "每个 KO 行后面写 PR 行" : "不要写 PR 行"}。\n`;
+  if (isAudio) s += "下面的音频是教室里刚录到的一段话。先写 T 行。";
+  else s += "<刚听到的一段话（手机语音识别结果）>\n" + latest + "\n</刚听到的一段话>";
+  return s;
+}
+
+/* ---------------- local matching against the prepared Q&A ---------------- */
+let QINDEX = null;
+/* LOCAL_MATCHER_START */
+const JOSA = /(으로써|에서는|에서|으로|에게|까지|부터|이랑|하고|은|는|이|가|을|를|의|에|로|과|와|도|만|요)$/;
+const STOP = new Set(["습니","니다","니까","입니","합니","있습","했습","겠습","하겠","됩니","십니","시겠","었습","았습","에서","으로","하는","무엇","엇입","어떻","떻게","는데","인데","나요","까요","예요","에요","거죠","건가","는지","이에","이요","뭡니","뭐예","해서","했어","어요","하셨","셨습","주십","십시","시오","합니까"]);
+const STOPW = new Set(["가장","중요한","주요","이번","생각","설명","말해","말씀해","간단히","왜","이","그","저","것","거","수","때","좀","더","어떻게","무엇","뭐","무슨","어떤","있습니까","합니까","입니까","됩니까","했습니까","주십시오","말씀","질문","교수님","그러면","그럼","그런데","근데","혹시","제가","저는","이건","그건","있나요","없나요","하나요","까","요"]);
+function normQ(s){ return (s || "").toLowerCase().replace(/[^0-9a-z가-힣.\s]/g, " ").replace(/\s+/g, " ").trim(); }
+function feats(s){
+  const out = [];
+  for (let w of normQ(s).split(" ")) {
+    if (!w) continue;
+    if (/^[0-9a-z.]+$/.test(w)) { if (w.replace(/\./g, "").length >= 2) out.push("t:" + w.replace(/\.$/, "")); continue; }
+    const stem = w.replace(JOSA, "");
+    if (stem.length >= 2 && !STOPW.has(w) && !STOPW.has(stem)) out.push("w:" + stem);
+    for (let i = 0; i < stem.length - 1; i++) { const g = stem.slice(i, i + 2); if (!STOP.has(g)) out.push("b:" + g); }
+  }
+  return out;
+}
+function buildIndex(items){
+  const docs = items.map(it => {
+    const m = new Map();
+    const add = (s, w) => { for (const f of feats(s)) m.set(f, Math.max(m.get(f) || 0, w)); };
+    (it.q || []).forEach(s => add(s, 1)); (it.k || []).forEach(s => add(s, 1));
+    (it.a || []).forEach(x => add(x.ko || "", ((it.q || []).length || (it.k || []).length) ? 0.35 : 1));
+    return m;
+  });
+  const df = new Map();
+  docs.forEach(m => m.forEach((_, f) => df.set(f, (df.get(f) || 0) + 1)));
+  const N = docs.length, idf = f => Math.log(1 + N / ((df.get(f) || 0) + 0.5));
+  return { docs, idf };
+}
+function matchQ(index, text){
+  const qf = [...new Set(feats(text))]; if (!qf.length) return [];
+  let total = 0; qf.forEach(f => total += index.idf(f));
+  return index.docs.map((m, i) => {
+    let s = 0; for (const f of qf) if (m.has(f)) s += index.idf(f) * m.get(f) * (f.startsWith("b:") ? 1 : 1.6);
+    return { i, score: s / total };
+  }).sort((a, b) => b.score - a.score);
+}
+/* LOCAL_MATCHER_END */
+
+/* ---------------- answer rendering ---------------- */
+function parse(text){
+  const a = { t: "", q: "", items: [], skip: /^\s*SKIP\b/i.test(text) };
+  for (const raw of text.split("\n")) {
+    const m = raw.trim().match(/^(T|Q|KO|PR|ZH)\s*[:：]\s*(.*)$/i); if (!m) continue;
+    const tag = m[1].toUpperCase(), v = m[2].trim();
+    if (tag === "T") a.t = v; else if (tag === "Q") a.q = v;
+    else if (tag === "KO") a.items.push({ ko: v, pr: "", zh: "" });
+    else { const l = a.items[a.items.length - 1]; if (l) l[tag === "PR" ? "pr" : "zh"] = v; }
+  }
+  return a;
+}
+function drawAnswer(box, a, heard){
+  box.replaceChildren();
+  if (a.q) box.append(el("div", "qmean", "教授在问：" + a.q));
+  if (heard || a.t) box.append(el("div", "heard", "听到：" + (a.t || heard)));
+  for (const it of a.items) {
+    const p = el("div", "pair"); p.append(el("div", "ko", it.ko));
+    if (it.pr) p.append(el("div", "pr", it.pr)); if (it.zh) p.append(el("div", "zh", it.zh));
+    box.append(p);
+  }
+}
+function pushHistory(){
+  if (!shown || !shown.items.length) return;
+  const c = el("div", "card"); drawAnswer(c, shown, shown.heard);
+  $("#hist").prepend(c);
+  while ($("#hist").children.length > 8) $("#hist").lastElementChild.remove();
+}
+
+/* ---------------- generation control ---------------- */
+let gen = null;
+// quiet: a local answer is already on screen; replace it only if Gemini gives a real answer
+async function respond(latest, audioB64, force, quiet){
+
+  if (gen && !gen.done) gen.ctl.abort();
+  const g = gen = { ctl: new AbortController(), at: Date.now(), done: false, started: false };
+  setState("生成中", "busy");
+  const parts = [{ text: userText(latest, !!audioB64) + (force ? "\n学生确认这是教授的提问，必须回答，不要输出 SKIP。" : "") }];
+  if (audioB64) parts.push({ inlineData: { mimeType: "audio/wav", data: audioB64 } });
+  const box = $("#answer");
+  if (!quiet) {
+    // say at once that this one is being written online, so the screen never looks stuck
+    pushHistory(); shown = null;
+    box.replaceChildren(el("div", "qmean", "问答稿里没有这题，正在联网生成…"), el("div", "heard", "听到：" + latest));
+  }
+  try {
+    const text = await gemini(systemText(), parts, g.ctl.signal, t => {
+      if (gen !== g) return;
+      const a = parse(t);
+      if (a.skip) return;
+      if (!g.started && (a.q || a.items.length)) { g.started = true; if (quiet) pushHistory(); }
+      if (g.started) drawAnswer(box, a, latest);
+    });
+    g.done = true;
+    if (gen !== g) return;
+    const a = parse(text);
+    if (a.skip || !a.items.length) {
+      if (quiet) return;
+      box.replaceChildren(el("div", "ph", "刚才那句判断为不需要回答（见上方字幕栏，可以点按钮强制回答）。"));
+      profBuf = profBuf.filter(u => u.text !== latest);
+      const cap = $("#caption");
+      cap.replaceChildren(el("span", null, "判断为不需要回答，已跳过：" + (a.t || latest) + " "));
+      if (!audioB64) {
+        const b = el("button", "btn", "这是问题，回答它");
+        b.onclick = () => { profBuf.push({ at: Date.now(), text: latest }); respond(latest, null, true); };
+        cap.append(b);
+      }
+    } else {
+      shown = { ...a, heard: a.t || latest, at: Date.now() };
+      drawAnswer(box, a, shown.heard);
+      box.append(el("div", "hint", "联网生成，用时 " + ((Date.now() - g.at) / 1000).toFixed(1) + " 秒"));
+      if (audioB64 && a.t) { const u = profBuf.find(u => u.text === latest); if (u) u.text = a.t; }
+    }
+  } catch (e) {
+    g.done = true;
+    if (e && e.name === "AbortError") return;
+    if (gen === g && !quiet) { box.querySelectorAll(":scope > .note").forEach(n => n.remove()); box.prepend(el("p", "note", (e && e.user) || "网络中断了，下一句会自动再试。")); }
+  } finally {
+    if (gen === g) setState(listening ? "在听" : "未开始", listening ? "on" : "");
+  }
+}
+function interruptIfGenerating(){
+  // the professor kept talking: drop the half-done answer and wait for the full question
+  if (gen && !gen.done && Date.now() - gen.at > 250) { gen.ctl.abort(); gen.done = true; setState("在听", "on"); return true; }
+  return false;
+}
+
+/* student reading the answer aloud: most of what was heard appears in the answer on screen */
+// sentence endings shared by any polite Korean question and answer; they say nothing about who is speaking
+const COMMON = new Set(["습니","니다","니까","입니","합니","있습","했습","겠습","하겠","됩니","십니","시겠","었습","았습","이다","에서","으로","하는","것은","것이","대한","무엇","엇입"]);
+function bigrams(s){
+  const out = new Set();
+  for (const w of (s.match(/[가-힣A-Za-z0-9]+/g) || [])) for (let i = 0; i < w.length - 1; i++) { const g = w.slice(i, i + 2); if (!COMMON.has(g)) out.add(g); }
+  return out;
+}
+function isReadingAnswer(text){
+  if (!shown || Date.now() - shown.at > 90000) return false;
+  const a = bigrams(text), b = bigrams(shownKO()); if (a.size < 6) return false;
+  let hit = 0; a.forEach(x => { if (b.has(x)) hit++; });
+  return hit / a.size > 0.6;
+}
+function onUtteranceText(text){
+  text = text.trim();
+  if ((text.match(/[가-힣]/g) || []).length < 4) return;
+  if (isReadingAnswer(text)) { $("#caption").textContent = "（你在念回答，已忽略）" + text; return; }
+  profBuf.push({ at: Date.now(), text }); profBuf = profBuf.slice(-6);
+  const useGemini = $("#useGemini").checked;
+  const r = QINDEX ? matchQ(QINDEX, text) : [];
+  const best = r[0];
+  if (best && best.score >= 0.22) {
+    // the prepared answer shows at once, no network involved
+    if (gen && !gen.done) { gen.ctl.abort(); gen.done = true; }
+    showLocal(best.i, text, best.score, r.slice(1, 3).filter(x => x.score >= 0.15), true);
+    if (best.score < 0.35 && useGemini) respond(text, null, false, true);
+    else setState(listening ? "在听" : "未开始", listening ? "on" : "");
+  } else if (useGemini) respond(text, null);
+  else $("#caption").textContent = "问答稿里没找到对应的问题：" + text;
+}
+function showLocal(i, heard, score, alts, toHistory){
+  const it = DATA.prep[i], title = it.q_zh.replace(/^\d+\.\s*/, "");
+  if (toHistory) pushHistory();
+  const items = it.a[0].ko.split(/(?<=[.?!])\s+/).filter(Boolean).map(ko => ({ ko, pr: "", zh: "" }));
+  shown = { q: title, items, heard, at: Date.now() };
+  const box = $("#answer"); box.replaceChildren();
+  box.append(el("div", "qmean", (score >= 0.35 ? "问答稿第 " : "可能是问答稿第 ") + (i + 1) + " 题：" + title));
+  box.append(el("div", "heard", "听到：" + heard));
+  for (const x of items) { const p = el("div", "pair"); p.append(el("div", "ko", x.ko)); box.append(p); }
+  if (it.a[0].zh) box.append(el("div", "zh", "中文要点：" + it.a[0].zh));
+  if (alts.length) {
+    const row = el("div", "row"); row.append(el("span", "hint", "不对的话换成："));
+    for (const a of alts) {
+      const b = el("button", "btn", "第" + (a.i + 1) + "题 " + DATA.prep[a.i].q_zh.replace(/^\d+\.\s*/, "").slice(0, 16));
+      b.onclick = () => { if (gen && !gen.done) { gen.ctl.abort(); gen.done = true; } showLocal(a.i, heard, 1, [], false); };
+      row.append(b);
+    }
+    box.append(row);
+  }
+}
+
+/* ---------------- mode 1: Safari speech recognition ---------------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+// One long continuous session started by the tap on 开始听. Questions are cut out of the running
+// transcript by pauses, so the session never has to be restarted between questions (iPhone Safari
+// often refuses to restart recognition without a fresh tap).
+let listening = false, rec = null, recActive = false, full = "", consumedH = 0, lastRes = 0, lastCount = 0, watch = null, everHeard = false;
+// Safari keeps revising text it already returned (spacing, punctuation, a word or two) a second after
+// the pause. Positions are therefore counted in letters only, so a revision of the last question does
+// not look like new speech and does not cancel the answer being written.
+const isH = ch => /[가-힣A-Za-z0-9]/.test(ch);
+function countH(s){ let n = 0; for (const ch of s) if (isH(ch)) n++; return n; }
+function afterH(s, n){ let i = 0; for (const ch of s) { if (n <= 0) break; if (isH(ch)) n--; i += ch.length; } return s.slice(i); }
+const pendingText = () => afterH(full, consumedH).replace(/^[^가-힣A-Za-z0-9]+/, "").trim();
+function joinResults(results){
+  // iPhone sometimes repeats earlier text inside later results; keep only the longest version of a run
+  const parts = [];
+  for (const r of Array.from(results)) {
+    const t = r[0].transcript.trim(); if (!t) continue;
+    const last = parts[parts.length - 1];
+    if (last && t.startsWith(last)) parts[parts.length - 1] = t;
+    else if (last && last.startsWith(t)) continue;
+    else parts.push(t);
+  }
+  return parts.join(" ");
+}
+function flushUtterance(){
+  const t = pendingText(); consumedH = countH(full); lastCount = 0;
+  if (countH(t) >= 4) onUtteranceText(t);
+}
+function needTap(){
+  // recognition stopped and Safari would not restart it on its own
+  setState("点屏幕继续听", "bad");
+  $("#caption").textContent = "识别暂停了：轻点屏幕任意位置继续听。";
+  const resume = () => { if (listening && !recActive) startRec(); };
+  document.addEventListener("click", resume, { once: true, capture: true });
+}
+function startRec(){
+  if (!listening) return;
+  try { rec && rec.abort(); } catch {}
+  const r = rec = new SR(); r.lang = "ko-KR"; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+  r.onstart = () => { if (rec !== r) return; recActive = true; full = ""; consumedH = 0; setState("在听", "on"); };
+  r.onresult = e => {
+    if (rec !== r) return;
+    full = joinResults(e.results); everHeard = true;
+    const pending = pendingText();
+    // Safari re-sends the same words many times a second; only a change in the letters heard counts as
+    // speech, otherwise the pause that ends a question is never seen
+    const n = countH(pending);
+    if (n !== lastCount) { lastCount = n; lastRes = Date.now(); }
+    if (countH(pending) >= 1) $("#caption").textContent = pending;
+    // only real new speech (a few letters beyond the last question) cancels the answer in progress
+    if (countH(pending) >= 4) interruptIfGenerating();
+  };
+  r.onerror = e => {
+    if (rec !== r) return;
+    if ((e.error === "not-allowed" || e.error === "service-not-allowed") && !everHeard) {
+      stopAll();
+      $("#answer").replaceChildren(el("p", "note", "Safari 没拿到麦克风或语音识别权限。打开 设置 > 通用 > 键盘，开启「启用听写」；再在 Safari 地址栏左边「大小」菜单 > 网站设置里，把麦克风设为允许。"));
+    }
+  };
+  r.onend = () => {
+    if (rec !== r) return;
+    recActive = false; flushUtterance();
+    if (!listening) return;
+    // try to carry on by itself; if Safari refuses, ask for one tap
+    setTimeout(() => {
+      if (!listening || recActive) return;
+      try { startRec(); } catch {}
+      setTimeout(() => { if (listening && !recActive) needTap(); }, 1500);
+    }, 150);
+  };
+  try { r.start(); } catch { needTap(); }
+}
+
+/* ---------------- mode 2: raw audio to Gemini ---------------- */
+let ac = null, stream = null, proc = null, carry = null;
+function wavBase64(chunks, rate){
+  let len = 0; chunks.forEach(c => len += c.length);
+  const ratio = rate / 16000, n = Math.floor(len / ratio);
+  const all = new Float32Array(len); let o = 0; chunks.forEach(c => { all.set(c, o); o += c.length; });
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (p, s) => { for (let i = 0; i < s.length; i++) v.setUint8(p + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(len, Math.floor((i + 1) * ratio)); let s = 0;
+    for (let k = a; k < b; k++) s += all[k]; s = s / Math.max(1, b - a);
+    s = Math.max(-1, Math.min(1, s)); v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  const bytes = new Uint8Array(buf); let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+async function startAudio(){
+  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  await ac.resume();
+  const src = ac.createMediaStreamSource(stream);
+  proc = ac.createScriptProcessor(2048, 1, 1);
+  src.connect(proc); proc.connect(ac.destination);
+  let floor = 0.004, speaking = false, voiced = 0, quiet = 0, utt = [], pre = [];
+  const bar = $("#meter b");
+  proc.onaudioprocess = e => {
+    const x = new Float32Array(e.inputBuffer.getChannelData(0));
+    let s = 0; for (let i = 0; i < x.length; i++) s += x[i] * x[i];
+    const rms = Math.sqrt(s / x.length), dt = x.length / ac.sampleRate * 1000;
+    bar.style.width = Math.min(100, rms * 900) + "%";
+    if (!speaking) {
+      pre.push(x); if (pre.length > 10) pre.shift();
+      if (rms > Math.max(floor * 3, 0.012)) {
+        if (++voiced >= 2) {
+          speaking = true; utt = pre.slice(); pre = []; quiet = 0;
+          $("#caption").textContent = "有人在说话…";
+          if (interruptIfGenerating() && gen && gen.chunks) carry = gen.chunks;
+        }
+      } else { voiced = 0; floor = floor * 0.97 + rms * 0.03; }
+    } else {
+      utt.push(x);
+      quiet = rms < Math.max(floor * 2, 0.008) ? quiet + dt : 0;
+      const dur = utt.length * dt;
+      if (quiet >= 900 || dur > 30000) {
+        speaking = false; voiced = 0;
+        const chunks = carry ? carry.concat(utt) : utt; carry = null; utt = [];
+        if (dur - quiet > 600) sendAudio(chunks);
+      }
+    }
+  };
+}
+function sendAudio(chunks){
+  $("#caption").textContent = "识别中…";
+  const id = "录音 " + new Date().toLocaleTimeString();
+  profBuf.push({ at: Date.now(), text: id }); profBuf = profBuf.slice(-6);
+  respond(id, wavBase64(chunks, ac.sampleRate));
+  gen.chunks = chunks;
+}
+
+/* ---------------- start / stop ---------------- */
+let wake = null;
+async function keepAwake(){ try { if (navigator.wakeLock && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => wake = null); } } catch {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && listening) keepAwake(); });
+
+function stopAll(){
+  listening = false; recActive = false; clearInterval(watch);
+  try { rec && rec.abort(); } catch {}
+  try { proc && (proc.onaudioprocess = null); stream && stream.getTracks().forEach(t => t.stop()); ac && ac.close(); } catch {}
+  rec = proc = stream = ac = null;
+  $("#toggle").textContent = "开始听"; $("#toggle").className = ""; $("#meter").hidden = true;
+  setState("未开始");
+  try { wake && wake.release(); } catch {} wake = null;
+}
+$("#toggle").onclick = async () => {
+  if (listening) { stopAll(); return; }
+  if (!S.get("op_key", "") && (opt("mode") === "audio" || $("#useGemini").checked)) { $("#setup").open = true; $("#answer").replaceChildren(el("p", "note", "先在「设置」里保存 Gemini Key；只用问答稿的话，取消勾选「再用 Gemini 现场生成」。")); return; }
+  if (!DATA.prep.length && !DATA.brief) { $("#setup").open = true; $("#answer").replaceChildren(el("p", "note", "先在「设置」里保存你的问答稿或论文资料。")); return; }
+  const mode = opt("mode");
+  if (mode === "speech" && !SR) { $("#answer").replaceChildren(el("p", "note", "这个浏览器不支持语音识别。请用 iPhone 自带的 Safari 打开，或在设置里改用「录音交给 Gemini 听」。")); return; }
+  listening = true; keepAwake(); $("#setup").open = false;
+  // open the connection to Gemini now, so the first question that needs it does not also pay for the handshake
+  if ($("#useGemini").checked && S.get("op_key", "")) fetch(API + "models?pageSize=1&key=" + encodeURIComponent(S.get("op_key", ""))).catch(() => {});
+  $("#toggle").textContent = "停止"; $("#toggle").className = "stop";
+  setState("在听", "on");
+  $("#caption").textContent = "在听…";
+  try {
+    if (mode === "speech") {
+      startRec();
+      // a pause of 0.9 s ends the current utterance and sends it
+      clearInterval(watch);
+      watch = setInterval(() => { if (listening && countH(full) > consumedH && Date.now() - lastRes > 900) flushUtterance(); }, 150);
+    }
+    else { $("#meter").hidden = false; await startAudio(); }
+  } catch (e) {
+    stopAll();
+    $("#answer").replaceChildren(el("p", "note", "拿不到麦克风。在 Safari 地址栏左边「大小」菜单 > 网站设置里，把麦克风设为允许，然后重新打开页面。"));
+  }
+};
+
+$("#testBtn").onclick = async () => {
+  if (!DATA.prep.length) { $("#testMsg").textContent = "先保存问答稿。"; return; }
+  // two different questions in a row, the way the defense goes
+  const qs = ["이 연구의 가장 중요한 기여는 무엇입니까?", "데이터는 어디에서 구했습니까?"];
+  const t0 = performance.now();
+  shown = null; onUtteranceText(qs[0]); shown = null; onUtteranceText(qs[1]);
+  $("#testMsg").textContent = "问答稿匹配两题共用了 " + Math.round(performance.now() - t0) + " 毫秒，上面显示的是第二题，第一题在下方历史里。";
+};
+
+/* ---------------- prepared Q&A and phrases ---------------- */
+function renderQA(){
+  const f = $("#qf").value.trim().toLowerCase(), list = $("#qaList"); list.replaceChildren();
+  if (!DATA.prep.length) { list.append(el("p", "hint", "还没有问答稿。在「设置」里粘贴后保存。")); return; }
+  for (const it of DATA.prep) {
+    if (f && !JSON.stringify(it).toLowerCase().includes(f)) continue;
+    const d = el("div", "qa"); d.append(el("div", "t", it.q_zh));
+    for (const s of it.a) { d.append(el("div", "ko", s.ko)); if (s.zh) d.append(el("div", "zh", s.zh)); }
+    list.append(d);
+  }
+  if (!list.children.length) list.append(el("p", "hint", "没有找到。"));
+}
+$("#qf").oninput = renderQA;
+[
+  ["좋은 질문 감사합니다.", "谢谢您的好问题。"],
+  ["죄송하지만, 다시 한번 말씀해 주시겠습니까?", "不好意思，能再说一遍吗？"],
+  ["조금 천천히 말씀해 주시면 감사하겠습니다.", "能说慢一点的话，非常感谢。"],
+  ["잠시만 생각할 시간을 주시겠습니까?", "能给我一点思考的时间吗？"],
+  ["질문을 제가 제대로 이해했는지 확인하고 싶습니다.", "我想确认一下我是否正确理解了问题。"],
+  ["한국어가 아직 서툴러서 양해 부탁드립니다.", "我的韩语还不太熟练，请您谅解。"],
+  ["말씀하신 부분은 중요한 지적이라고 생각합니다.", "您指出的这一点，我认为非常重要。"],
+  ["그 부분은 아직 충분히 검토하지 못했습니다. 앞으로 연구에서 보완하겠습니다.", "那部分我还没有充分研究，今后会在研究中补充。"],
+  ["지도교수님과 상의하여 반영하겠습니다.", "我会和导师商量后加以反映。"],
+  ["감사합니다. 이상입니다.", "谢谢，我的回答就是这些。"]
+].forEach(([k, z]) => { const d = el("div", "qa"); d.append(el("div", "ko", k), el("div", "zh", z)); $("#phr").append(d); });
+
+/* ---------------- boot ---------------- */
+(async () => {
+  renderQA();
+  loadData();
+  if (!DATA.prep.length) $("#setup").open = true;
+  if (S.get("op_key", "")) loadModels();
+  if (!SR) $("#caption").textContent = "这个浏览器不支持手机听写，可在设置里改用「录音交给 Gemini 听」。";
+})();
+</script>
+</body>
+</html>
