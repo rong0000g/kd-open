@@ -76,8 +76,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
   <details id="setup">
     <summary>设置（第一次用先填这里）</summary>
     <div class="form">
-      <label for="qa">我的问答稿：每题一行 Q: 中文问题，一行 KO: 韩语回答；可选 ZH: 中文意思、QK: 韩语问法（用 / 隔开）、K: 关键词（用逗号隔开）</label>
-      <textarea id="qa" rows="9" placeholder="Q: 为什么选这个题目？&#10;QK: 왜 이 주제를 선택했습니까 / 연구 동기는 무엇입니까&#10;KO: 네, 좋은 질문 감사합니다. 이 주제를 선택한 이유는 …입니다.&#10;ZH: 谢谢。选这个题目是因为……&#10;&#10;Q: 数据从哪里来？&#10;KO: …"></textarea>
+      <label for="qa">我的问答稿：每题一行 Q: 中文问题；回答每句一行 KO: 韩语，紧接一行 ZH: 这句的中文翻译；可选 QK: 韩语问法（用 / 隔开）、K: 关键词（用逗号隔开）</label>
+      <textarea id="qa" rows="9" placeholder="Q: 为什么选这个题目？&#10;QK: 왜 이 주제를 선택했습니까 / 연구 동기는 무엇입니까&#10;K: 주제, 동기, 선택&#10;KO: 이 주제를 선택한 이유는 …입니다.&#10;ZH: 选这个题目的原因是……&#10;KO: 그래서 …을 분석했습니다.&#10;ZH: 所以分析了……&#10;&#10;Q: 数据从哪里来？&#10;KO: …"></textarea>
       <div class="row"><button class="btn pri" id="qaSave">保存问答稿</button><span class="hint" id="qaMsg"></span></div>
 
       <label for="brief">我的论文资料：摘要、研究问题、数据、方法、主要结果、讲稿都可以（联网回答和自动出题时用）</label>
@@ -148,10 +148,10 @@ function setState(text, cls){ const p = $("#state"); p.className = "pill " + (cl
 
 /* ---------------- my Q&A and materials (kept only in this browser) ---------------- */
 let DATA = { prep: [], brief: "" };
-const blank = () => ({ q_zh: "", qk: [], k: [], ko: "", zh: "" });
+const blank = () => ({ q_zh: "", qk: [], k: [], a: [] });
 function parseQA(text){
   const items = []; let cur = null;
-  const push = () => { if (cur && cur.ko.trim()) items.push(cur); cur = null; };
+  const push = () => { if (cur && cur.a.length) items.push(cur); cur = null; };
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line) continue;
     let m;
@@ -164,19 +164,22 @@ function parseQA(text){
       if (!cur) cur = blank();
       if (tag === "QK") cur.qk.push(...v.split(/\s*[\/／|]\s*/).filter(Boolean));
       else if (tag === "K") cur.k.push(...v.split(/\s*[,，、]\s*/).filter(Boolean));
-      else if (tag === "KO" || tag === "A" || tag === "한국어 답변") cur.ko += (cur.ko ? " " : "") + v;
-      else cur.zh += (cur.zh ? " " : "") + v;
+      // each KO line is one sentence; the ZH line after it is that sentence's translation
+      else if (tag === "KO" || tag === "A" || tag === "한국어 답변") cur.a.push({ ko: v, zh: "" });
+      else { const l = cur.a[cur.a.length - 1]; if (l) l.zh += (l.zh ? " " : "") + v; }
       continue;
     }
-    if (cur) { if (/[가-힣]/.test(line)) cur.ko += " " + line; else cur.zh += (cur.zh ? " " : "") + line; }
+    const l = cur && cur.a[cur.a.length - 1];
+    if (l) { if (/[가-힣]/.test(line)) l.ko += " " + line; else l.zh += (l.zh ? " " : "") + line; }
   }
   push();
-  return items.map((c, i) => ({ q_zh: (i + 1) + ". " + (c.q_zh || c.ko.slice(0, 20)), q: c.qk, k: c.k, a: [{ ko: c.ko.trim(), zh: c.zh.trim() }] }));
+  return items.map((c, i) => ({ q_zh: (i + 1) + ". " + (c.q_zh || c.a[0].ko.slice(0, 20)), q: c.qk, k: c.k,
+    a: c.a.map(x => ({ ko: x.ko.trim(), zh: x.zh.trim() })) }));
 }
 const plainQ = it => it.q_zh.replace(/^\d+\.\s*/, "");
 function serializeQA(prep){
   return prep.map(it => ["Q: " + plainQ(it), it.q && it.q.length ? "QK: " + it.q.join(" / ") : "", it.k && it.k.length ? "K: " + it.k.join(", ") : "",
-    "KO: " + it.a[0].ko, it.a[0].zh ? "ZH: " + it.a[0].zh : ""].filter(Boolean).join("\n")).join("\n\n");
+    ...it.a.map(x => "KO: " + x.ko + (x.zh ? "\nZH: " + x.zh : ""))].filter(Boolean).join("\n")).join("\n\n");
 }
 function loadData(){
   let prep = []; try { prep = JSON.parse(S.get("op_prep", "[]")) || []; } catch {}
@@ -217,7 +220,7 @@ async function helper(btn, run){
 $("#mkVariants").onclick = () => helper($("#mkVariants"), async () => {
   const prep = DATA.prep;
   if (!prep.length) throw { user: "先保存问答稿。" };
-  const list = prep.map((it, i) => i + ". " + plainQ(it) + " | " + it.a[0].ko.slice(0, 160)).join("\n");
+  const list = prep.map((it, i) => i + ". " + plainQ(it) + " | " + it.a.map(x => x.ko).join(" ").slice(0, 160)).join("\n");
   const t = await gemini("你熟悉韩国大学的学术口语。", [{ text:
 `下面是一位在韩国读博的学生的开题答辩问答稿，每行是：序号. 中文问题 | 韩语回答的开头。
 为每一题写出韩国教授在答辩现场口头提问时可能用的 4 种韩语问法（自然口语，长短不一），以及 6-10 个韩语关键词（包括术语的韩语说法；英文缩写同时给出韩语读音，例如 GDP 和 지디피、DID 和 디아이디）。
@@ -238,8 +241,8 @@ $("#mkPrep").onclick = () => helper($("#mkPrep"), async () => {
   const have = DATA.prep.map(plainQ).join("\n");
   const t = await gemini("你在帮一位在韩国读博的中国留学生准备开题答辩。", [{ text:
 `根据下面的论文资料，预测韩国教授在开题答辩上最可能问的 15 个问题，覆盖研究动机、创新点、与已有研究的区别、理论框架与假设、数据来源、变量测量、研究方法与内生性、可行性与时间安排、预期贡献、局限。不要和“已有问题”重复。
-每题给出学生可以背下来的韩语回答：합니다체，3-4 句短句，简单好念，只依据资料，资料里没有的数字和文献不要编。
-只输出 JSON 数组，不要任何其他文字，形如：[{"q_zh":"中文问题","q":["韩语问法1","韩语问法2","韩语问法3"],"k":["韩语关键词"],"ko":"韩语回答","zh":"回答的中文意思"}]
+每题给出学生可以背下来的韩语回答：합니다체，1-2 句短句，简单好念，只依据资料，资料里没有的数字和文献不要编；每句附中文翻译。
+只输出 JSON 数组，不要任何其他文字，形如：[{"q_zh":"中文问题","q":["韩语问法1","韩语问法2","韩语问法3"],"k":["韩语关键词"],"a":[{"ko":"韩语第1句","zh":"这句的中文翻译"},{"ko":"韩语第2句","zh":"这句的中文翻译"}]}]
 
 <已有问题>
 ${have || "（无）"}
@@ -248,7 +251,8 @@ ${have || "（无）"}
 <论文资料>
 ${DATA.brief}
 </论文资料>` }], undefined, () => {}, 8192);
-  const add = parseJSONLoose(t).filter(x => x && x.ko).map(x => ({ q_zh: String(x.q_zh || ""), q: (x.q || []).map(String), k: (x.k || []).map(String), a: [{ ko: String(x.ko), zh: String(x.zh || "") }] }));
+  const add = parseJSONLoose(t).filter(x => x && Array.isArray(x.a) && x.a.length).map(x => ({ q_zh: String(x.q_zh || ""), q: (x.q || []).map(String), k: (x.k || []).map(String),
+    a: x.a.map(y => ({ ko: String((y && y.ko) || ""), zh: String((y && y.zh) || "") })).filter(y => y.ko) }));
   savePrep([...DATA.prep, ...add]);
   return "已加入 " + add.length + " 题。生成的回答请自己读一遍、改准确，再背熟。";
 });
@@ -357,7 +361,7 @@ async function geminiOnce(model, system, parts, signal, onText, maxTokens){
 /* ---------------- prompts ---------------- */
 function systemText(){
   const d = DATA;
-  const qa = d.prep.map(it => it.q_zh + "\n" + it.a[0].ko + (it.a[0].zh ? "\n" + it.a[0].zh : "")).join("\n\n");
+  const qa = d.prep.map(it => it.q_zh + "\n" + it.a.map(x => x.ko + (x.zh ? "（" + x.zh + "）" : "")).join("\n")).join("\n\n");
   return `你是一名在韩国读博的中国留学生开题答辩时的实时助手。教授用韩语说话，学生必须用韩语回答，但韩语水平有限。你会收到教室里刚听到的一段话，要立刻给出学生可以照着念的韩语回答。
 
 判断：
@@ -564,13 +568,19 @@ function onUtteranceText(text){
 function showLocal(i, heard, score, alts, toHistory){
   const it = DATA.prep[i], title = it.q_zh.replace(/^\d+\.\s*/, "");
   if (toHistory) pushHistory();
-  const items = it.a[0].ko.split(/(?<=[.?!])\s+/).filter(Boolean).map(ko => ({ ko, pr: "", zh: "" }));
+  // newer Q&A keep one Chinese translation per Korean sentence; older single-block answers are split by sentence
+  const items = it.a.length > 1 ? it.a.map(x => ({ ko: x.ko, pr: "", zh: x.zh || "" }))
+    : it.a[0].ko.split(/(?<=[.?!])\s+/).filter(Boolean).map(ko => ({ ko, pr: "", zh: "" }));
   shown = { q: title, items, heard, at: Date.now() };
   const box = $("#answer"); box.replaceChildren();
   box.append(el("div", "qmean", (score >= 0.35 ? "问答稿第 " : "可能是问答稿第 ") + (i + 1) + " 题：" + title));
   box.append(el("div", "heard", "听到：" + heard));
-  for (const x of items) { const p = el("div", "pair"); p.append(el("div", "ko", x.ko)); box.append(p); }
-  if (it.a[0].zh) box.append(el("div", "zh", "中文要点：" + it.a[0].zh));
+  for (const x of items) { const p = el("div", "pair"); p.append(el("div", "ko", x.ko)); if (x.zh) p.append(el("div", "zh", x.zh)); box.append(p); }
+  if (it.a.length === 1 && it.a[0].zh) {
+    // a one-sentence answer gets its translation right under it; a longer block keeps one translation at the end
+    if (items.length === 1) box.lastElementChild.append(el("div", "zh", it.a[0].zh));
+    else box.append(el("div", "zh", "中文：" + it.a[0].zh));
+  }
   if (alts.length) {
     const row = el("div", "row"); row.append(el("span", "hint", "不对的话换成："));
     for (const a of alts) {
